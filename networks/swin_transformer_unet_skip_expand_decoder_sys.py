@@ -33,7 +33,7 @@ def window_partition(x, window_size):
     Returns:
         windows: (num_windows*B, window_size, window_size, C)
     """
-    B, H, W, C = x.shape
+    B, H, W, C = x.shape # [24,56,56,96]
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
@@ -233,14 +233,14 @@ class SwinTransformerBlock(nn.Module):
         x = self.norm1(x)
         x = x.view(B, H, W, C)
 
-        # cyclic shift
+        # cyclic shift # 是否进行平移
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
 
         # partition windows
-        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C # 
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
@@ -338,7 +338,7 @@ class PatchExpand(nn.Module):
         self.expand = nn.Linear(dim, 2*dim, bias=False) if dim_scale==2 else nn.Identity()
         self.norm = norm_layer(dim // dim_scale)
 
-    def forward(self, x):
+    def forward(self, x): # 在第一个stage中input_resolution为7,dim为768
         """
         x: B, H*W, C
         """
@@ -347,7 +347,7 @@ class PatchExpand(nn.Module):
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
 
-        x = x.view(B, H, W, C)
+        x = x.view(B, H, W, C) # 将L中H*W分离出来
         x = rearrange(x, 'b h w (p1 p2 c)-> b (h p1) (w p2) c', p1=2, p2=2, c=C//4)
         x = x.view(B,-1,C//4)
         x= self.norm(x)
@@ -428,8 +428,8 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x):
-        for blk in self.blocks:
+    def forward(self, x): 
+        for blk in self.blocks: # 这里的blocks就是一个stage中成对的block
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
@@ -522,7 +522,7 @@ class PatchEmbed(nn.Module):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
-        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
+        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]] # 56,56
         self.img_size = img_size
         self.patch_size = patch_size
         self.patches_resolution = patches_resolution
@@ -531,7 +531,7 @@ class PatchEmbed(nn.Module):
         self.in_chans = in_chans
         self.embed_dim = embed_dim
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size) # 3,96,4,4
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
@@ -542,8 +542,8 @@ class PatchEmbed(nn.Module):
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
-        if self.norm is not None:
+        x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C [24,96,56,56]
+        if self.norm is not None: # Layer Norm
             x = self.norm(x)
         return x
 
@@ -593,8 +593,8 @@ class SwinTransformerSys(nn.Module):
         depths_decoder,drop_path_rate,num_classes))
 
         self.num_classes = num_classes
-        self.num_layers = len(depths)
-        self.embed_dim = embed_dim
+        self.num_layers = len(depths) # [2,2,2,2]  4
+        self.embed_dim = embed_dim # 96
         self.ape = ape
         self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
@@ -624,7 +624,7 @@ class SwinTransformerSys(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer), # 56 28 14 7  h/4,h/8,h/16,h/32
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
@@ -641,8 +641,8 @@ class SwinTransformerSys(nn.Module):
         # build decoder layers
         self.layers_up = nn.ModuleList()
         self.concat_back_dim = nn.ModuleList()
-        for i_layer in range(self.num_layers):
-            concat_linear = nn.Linear(2*int(embed_dim*2**(self.num_layers-1-i_layer)),
+        for i_layer in range(self.num_layers): # 4
+            concat_linear = nn.Linear(2*int(embed_dim*2**(self.num_layers-1-i_layer)), # 第一层为空，第二层为[768,394]
             int(embed_dim*2**(self.num_layers-1-i_layer))) if i_layer > 0 else nn.Identity()
             if i_layer ==0 :
                 layer_up = PatchExpand(input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-1-i_layer)),
@@ -691,30 +691,30 @@ class SwinTransformerSys(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    #Encoder and Bottleneck
+    # Encoder and Bottleneck
     def forward_features(self, x):
-        x = self.patch_embed(x)
-        if self.ape:
+        x = self.patch_embed(x)  # patch partition
+        if self.ape: # 绝对位置
             x = x + self.absolute_pos_embed
-        x = self.pos_drop(x)
-        x_downsample = []
+        x = self.pos_drop(x) # drop out
+        x_downsample = [] # 将下采样的数据储存起来
 
         for layer in self.layers:
-            x_downsample.append(x)
+            x_downsample.append(x) # 先保存x,然后使x经过swin block
             x = layer(x)
 
-        x = self.norm(x)  # B L C
+        x = self.norm(x)  # B L C  最后一层为[24,7*7,768]
   
         return x, x_downsample
 
-    #Dencoder and Skip connection
+    # Dencoder and Skip connection
     def forward_up_features(self, x, x_downsample):
         for inx, layer_up in enumerate(self.layers_up):
             if inx == 0:
                 x = layer_up(x)
             else:
-                x = torch.cat([x,x_downsample[3-inx]],-1)
-                x = self.concat_back_dim[inx](x)
+                x = torch.cat([x,x_downsample[3-inx]],-1) # [24,14*14,384] + [24,14*14,384] -> [24,14*14,768]
+                x = self.concat_back_dim[inx](x) # 过一个nn.linear层, [24,14*14,384]
                 x = layer_up(x)
 
         x = self.norm_up(x)  # B L C
@@ -735,9 +735,9 @@ class SwinTransformerSys(nn.Module):
         return x
 
     def forward(self, x):
-        x, x_downsample = self.forward_features(x)
-        x = self.forward_up_features(x,x_downsample)
-        x = self.up_x4(x)
+        x, x_downsample = self.forward_features(x) # 下采样的过程，返回值为第4个stage完的x:[24,7*7,768]和四个阶段的结果列表
+        x = self.forward_up_features(x,x_downsample) # 上采样过程
+        x = self.up_x4(x)  # [24,56*56,96]
 
         return x
 

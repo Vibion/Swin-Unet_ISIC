@@ -1,0 +1,5 @@
+# 排除模型输出文件夹、数据文件夹、图片文件夹、预训练模型文件夹
+model_out/
+data/
+*.jpg
+pretrained_ckpt/

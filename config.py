@@ -7,7 +7,7 @@
 
 import os
 import yaml
-from yacs.config import CfgNode as CN
+from yacs.config import CfgNode as CN  # cfg
 
 _C = CN()
 
@@ -173,17 +173,17 @@ _C.LOCAL_RANK = 0
 
 
 def _update_config_from_file(config, cfg_file):
-    config.defrost()
+    config.defrost() # deforst对节点进行解冻，否则节点处于冻结状态无法修改
     with open(cfg_file, 'r') as f:
-        yaml_cfg = yaml.load(f, Loader=yaml.FullLoader)
+        yaml_cfg = yaml.load(f, Loader=yaml.FullLoader) # 返回一个配置项字典
 
-    for cfg in yaml_cfg.setdefault('BASE', ['']):
+    for cfg in yaml_cfg.setdefault('BASE', ['']): # 如果yaml_cfg中有BASE属性，代表该配置文件基于其他文件，则递归读取
         if cfg:
             _update_config_from_file(
                 config, os.path.join(os.path.dirname(cfg_file), cfg)
             )
     print('=> merge config from {}'.format(cfg_file))
-    config.merge_from_file(cfg_file)
+    config.merge_from_file(cfg_file) # 内置方法
     config.freeze()
 
 
@@ -223,7 +223,7 @@ def get_config(args):
     """Get a yacs CfgNode object with default values."""
     # Return a clone so that the defaults will not be altered
     # This is for the "local variable" use pattern
-    config = _C.clone()
+    config = _C.clone() # 创建一个_C的副本
     update_config(config, args)
 
     return config

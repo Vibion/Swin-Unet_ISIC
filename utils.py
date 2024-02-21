@@ -13,9 +13,10 @@ class DiceLoss(nn.Module):
 
     def _one_hot_encoder(self, input_tensor):
         tensor_list = []
-        for i in range(self.n_classes):
+        for i in range(self.n_classes): # 2
             temp_prob = input_tensor == i  # * torch.ones_like(input_tensor)
-            tensor_list.append(temp_prob.unsqueeze(1))
+            # tensor_list.append(temp_prob.unsqueeze(1))
+            tensor_list.append(temp_prob) # 不需要增加维度
         output_tensor = torch.cat(tensor_list, dim=1)
         return output_tensor.float()
 
@@ -30,7 +31,7 @@ class DiceLoss(nn.Module):
         return loss
 
     def forward(self, inputs, target, weight=None, softmax=False):
-        if softmax:
+        if softmax:  # input:[24,2,224,224]
             inputs = torch.softmax(inputs, dim=1)
         target = self._one_hot_encoder(target)
         if weight is None:
